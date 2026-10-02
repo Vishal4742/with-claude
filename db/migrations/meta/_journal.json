@@ -120,6 +120,13 @@
       "when": 1790886523714,
       "tag": "0016_project_directory",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790962670683,
+      "tag": "0017_retry_stuck_promotions",
+      "breakpoints": true
     }
   ]
 }

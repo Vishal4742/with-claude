@@ -466,23 +466,25 @@ describe('the sync', () => {
     );
 
     // A database blip mid-run: every insert into `events` fails.
-    await db.execute(sql`
-      CREATE FUNCTION refuse_event() RETURNS trigger LANGUAGE plpgsql
-      AS $$ BEGIN RAISE EXCEPTION 'blip'; END $$
-    `);
-    await db.execute(sql`
-      CREATE TRIGGER refuse_event BEFORE INSERT ON events
-      FOR EACH ROW EXECUTE FUNCTION refuse_event()
-    `);
     try {
+      await db.execute(sql`
+        CREATE FUNCTION refuse_event() RETURNS trigger LANGUAGE plpgsql
+        AS $$ BEGIN RAISE EXCEPTION 'blip'; END $$
+      `);
+      await db.execute(sql`
+        CREATE TRIGGER refuse_event BEFORE INSERT ON events
+        FOR EACH ROW EXECUTE FUNCTION refuse_event()
+      `);
       await expect(syncSource(source, db)).rejects.toThrow();
     } finally {
-      await db.execute(sql`DROP TRIGGER refuse_event ON events`);
-      await db.execute(sql`DROP FUNCTION refuse_event()`);
+      await db.execute(sql`DROP TRIGGER IF EXISTS refuse_event ON events`);
+      await db.execute(sql`DROP FUNCTION IF EXISTS refuse_event()`);
     }
 
-    // The feed has not changed since, so only a retry can publish the event.
-    await syncSource(source, db);
+    // The feed has not changed since, so only a retry can publish the event,
+    // and the retry is not an organiser edit.
+    const retried = await syncSource(source, db);
+    expect(retried).toMatchObject({ updated: 0, unchanged: 1, promoted: 1 });
     const [published] = await db
       .select()
       .from(schema.events)
@@ -493,6 +495,47 @@ describe('the sync', () => {
       .from(schema.eventSourceRecords)
       .where(eq(schema.eventSourceRecords.externalId, 'evt-retry'));
     expect(record.eventId).toBe(published.id);
+  });
+
+  it('retries a promotion stuck before the retry existed, once migration 0017 marks it', async () => {
+    const source = new ManualEventSource(
+      [
+        event({
+          externalId: 'evt-stuck',
+          title: 'Bhopal | Stuck Night',
+          registrationUrl: 'https://luma.com/stuck-test',
+        }),
+      ],
+      { key: 'test:stuck', complete: true },
+    );
+    await syncSource(source, db);
+    const [first] = await db
+      .select()
+      .from(schema.eventSourceRecords)
+      .where(eq(schema.eventSourceRecords.externalId, 'evt-stuck'));
+
+    // The old bug's shape: promoted, no event, the real fingerprint stored.
+    await db.delete(schema.events).where(eq(schema.events.id, first.eventId!));
+    await db
+      .update(schema.eventSourceRecords)
+      .set({ eventId: null, rawHash: first.rawHash.replace(/^pending:/, '') })
+      .where(eq(schema.eventSourceRecords.id, first.id));
+    const before = await syncSource(source, db);
+    expect(before.promoted).toBe(1);
+    expect(
+      (await db.select().from(schema.events).where(eq(schema.events.externalId, 'evt-stuck'))).length,
+    ).toBe(0);
+
+    await db.execute(
+      sql.raw(readFileSync('db/migrations/0017_retry_stuck_promotions.sql', 'utf8')),
+    );
+    const after = await syncSource(source, db);
+    expect(after).toMatchObject({ updated: 0, unchanged: 1, promoted: 1 });
+    const [published] = await db
+      .select()
+      .from(schema.events)
+      .where(eq(schema.events.externalId, 'evt-stuck'));
+    expect(published?.status).toBe('published');
   });
 
   it('writes an append-only audit entry for each run', async () => {
