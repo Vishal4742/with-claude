@@ -17,6 +17,7 @@ import 'dotenv/config';
 import { defineConfig } from 'astro/config';
 import react from '@astrojs/react';
 import vercel from '@astrojs/vercel';
+import { vercelPathGuard } from './scripts/vercel-path-guard.mjs';
 
 
 
@@ -105,6 +106,7 @@ export default defineConfig({
   build: { inlineStylesheets: 'auto' },
   image: { service: { entrypoint: 'astro/assets/services/sharp' } },
   vite: {
+    plugins: [vercelPathGuard()],
     build: {
       // The site is static-first; a handful of tiny islands beats one bundle.
       assetsInlineLimit: 2048,

@@ -13,6 +13,8 @@ import { routeDirectoryHost } from './lib/directory-host';
 
 export const onRequest = defineMiddleware(async (context, next) => {
   // @astrojs/vercel <10.0.2 trusts this client header to pick the route (GHSA-mr6q-rp88-fx84).
+  // The real fix, which also covers the ?x_astro_path= form, is the build-time
+  // patch in scripts/vercel-path-guard.mjs; this refusal is a second line.
   if (context.request.headers.has('x-astro-path')) {
     return new Response(null, { status: 400, headers: { 'Cache-Control': 'no-store' } });
   }
