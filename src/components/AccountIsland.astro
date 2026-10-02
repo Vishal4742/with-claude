@@ -8,7 +8,7 @@
  *
  *   · a node marked `data-account-island="<name>"`
  *   · the editor's props as JSON in a `<script type="application/json">`,
- *     serialised with `safeJsonLd()` so a member's own text cannot close the
+ *     serialised with `safeInlineJson()` so a member's own text cannot close the
  *     script element
  *   · a server fallback that says what is happening, removed on mount
  *
@@ -16,7 +16,7 @@
  * inside the one provider. Props are data the server already authorised for
  * this member; no token is ever written into the page.
  */
-import { safeJsonLd } from '@/lib/seo';
+import { safeInlineJson } from '@/lib/seo';
 
 interface Props {
   name: 'profile-editor' | 'project-editor';
@@ -28,7 +28,7 @@ const configured = Boolean(import.meta.env.PUBLIC_PRIVY_APP_ID);
 ---
 
 <div class="account-island" data-account-island={name}>
-  <script type="application/json" set:html={safeJsonLd(props)} />
+  <script type="application/json" set:html={safeInlineJson(props)} />
   {
     configured ? (
       <p class="island-loading js-hydrate-hide">Loading the editor…</p>

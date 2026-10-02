@@ -17,7 +17,7 @@
  * (`publicProjectWhere()`); anything else is a real 404 for the public; a
  * moderator's render is `private, no-store`; public renders use the bounded
  * TTL in `src/server/http/cache.ts`. User text is rendered as text; JSON-LD
- * goes through `safeJsonLd()` in the layout.
+ * goes through `safeInlineJson()` in the layout.
  */
 export const prerender = false;
 

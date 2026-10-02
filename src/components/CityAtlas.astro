@@ -5,7 +5,7 @@ import type { RecordSelectors } from '@/data/selectors';
 import { CITY_STATE_LABEL, CITY_STATE_NOTE, CITY_STATE_ORDER } from '@/lib/city';
 import { PLATE, formatCoords, graticule, project, scaleBar } from '@/lib/geo';
 import { dateParts } from '@/lib/datetime';
-import { safeJsonLd } from '@/lib/seo';
+import { safeInlineJson } from '@/lib/seo';
 import type { AtlasCity } from '@/lib/atlas';
 import type { CityState } from '@/data/types';
 
@@ -391,7 +391,7 @@ const legend = CITY_STATE_ORDER.map((state: CityState) => ({
           is:inline
           type="application/json"
           data-atlas-data={atlasId}
-          set:html={safeJsonLd(atlasData)}
+          set:html={safeInlineJson(atlasData)}
         />
       </div>
     )

@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { assertNoPublicSecrets } from '../db/env';
 import { forms } from '../src/data/forms';
-import { safeJsonLd } from '../src/lib/seo';
+import { safeInlineJson } from '../src/lib/seo';
 
 /**
  * The two promises this file exists to keep.
@@ -61,17 +61,24 @@ function filesUnder(dir: string, extensions: string[]): string[] {
 }
 
 describe('inline JSON cannot close its own script element', () => {
-  it('escapes every JSON payload a component writes with set:html', () => {
+  it('escapes every payload a component writes with set:html, in both apps', () => {
     // A feed-supplied event title containing `</script>` would end the element.
-    const raw = filesUnder('src', ['.astro']).filter((file) =>
-      /set:html=\{\s*JSON\.stringify\(/.test(readFileSync(file, 'utf8')),
-    );
-    expect(raw).toEqual([]);
+    // Only the escaping helper, or a build-time constant reviewed here, may feed
+    // set:html: a stringified variable or template literal fails this test.
+    const REVIEWED = new Set(['src/components/ProjectLogo.astro: mascot']); // an SVG file, ?raw
+    const unescaped: string[] = [];
+    for (const file of [...filesUnder('src', ['.astro']), ...filesUnder('admin/src', ['.astro'])]) {
+      for (const match of readFileSync(file, 'utf8').matchAll(/set:html=\{\s*([^}]*?)\s*\}/g)) {
+        const site = `${file.replace(/\\/g, '/')}: ${match[1]}`;
+        if (!/^safeInlineJson\(/.test(match[1]) && !REVIEWED.has(site)) unescaped.push(site);
+      }
+    }
+    expect(unescaped).toEqual([]);
   });
 
   it('round-trips a hostile title without emitting a closing tag', () => {
     const value = { title: 'x</script><img src=x onerror=alert(1)>' };
-    const json = safeJsonLd(value);
+    const json = safeInlineJson(value);
     expect(json).not.toMatch(/<\/script/i);
     expect(JSON.parse(json)).toEqual(value);
   });
