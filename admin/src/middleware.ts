@@ -27,6 +27,12 @@ function isPublic(pathname: string): boolean {
 }
 
 export const onRequest = defineMiddleware(async (context, next) => {
+  // @astrojs/vercel <10.0.2 trusts this client header to pick the route (GHSA-mr6q-rp88-fx84).
+  // scripts/vercel-path-guard.mjs removes the override at build time; this refusal is a second line.
+  if (context.request.headers.has('x-astro-path')) {
+    return new Response(null, { status: 400, headers: { 'Cache-Control': 'no-store' } });
+  }
+
   const { pathname } = context.url;
 
   // Static assets served by the adapter never reach here, but be explicit.

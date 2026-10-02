@@ -840,7 +840,7 @@ export async function importRecords(
       builtAtEventId,
       position: index,
       publicationStatus: (status === 'published' || featured) ? 'published' : 'draft',
-      moderationState: 'clean',
+      // No moderationState: it defaults to 'clean', and a re-import must not undo a moderator.
       status,
       featured,
       createdAt,

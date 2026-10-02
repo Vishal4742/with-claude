@@ -1,6 +1,7 @@
 ---
 import { buildSearchIndex, searchVocabulary } from '@/lib/search';
 import { KIND_LABEL, SEARCH_KINDS, groupByKind } from '@/lib/search-core';
+import { safeInlineJson } from '@/lib/seo';
 import type { SearchKind, SearchRecord, SearchVocabulary } from '@/lib/search-core';
 import * as staticData from '@/data';
 
@@ -52,7 +53,7 @@ const tabs: { kind: SearchKind | 'all'; label: string; count: number }[] = [
     type="application/json"
     data-search-vocabulary
     is:inline
-    set:html={JSON.stringify(vocabulary)}
+    set:html={safeInlineJson(vocabulary)}
   />
 
   <form class="search-form js-only" data-search-form role="search" action="/discover" method="get">

@@ -353,6 +353,21 @@ describe('updated_at reflects a real change, not a real import', () => {
 });
 
 describe('governance survives the import', () => {
+  it("keeps a moderator's restriction on a project", async () => {
+    const where = eq(schema.projects.slug, repositoryRecords.projects[0].slug);
+    await db.update(schema.projects).set({ moderationState: 'restricted' }).where(where);
+    try {
+      await importRecords(db, repositoryRecords);
+      const [row] = await db
+        .select({ state: schema.projects.moderationState })
+        .from(schema.projects)
+        .where(where);
+      expect(row.state).toBe('restricted');
+    } finally {
+      await db.update(schema.projects).set({ moderationState: 'clean' }).where(where);
+    }
+  }, 120_000);
+
   it('strips the ambassador role a builder record claims', async () => {
     const [row] = await db
       .select()

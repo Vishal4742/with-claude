@@ -105,6 +105,14 @@ export interface SyncSummary {
 const SEPARATOR = '\u0000';
 
 /**
+ * Prefix on `rawHash` while a row's phase-4 work (promotion, link or
+ * withdrawal) has not been written. It never equals a bare fingerprint, so the
+ * row is retried; it keeps the fingerprint, so a retry is not counted as an edit.
+ * Migration 0017 gives the same marker to rows stuck before it existed.
+ */
+export const PENDING = 'pending:';
+
+/**
  * A stable fingerprint of everything we care about in an external event.
  *
  * Only the fields that would change what the site shows are included, and they
@@ -484,7 +492,8 @@ export async function syncSource(source: EventSource, db: AnyDatabase): Promise<
         stateReason: reason,
         indiaConfidence: verdict.confidence,
         cityId,
-        rawHash: hash,
+        // Marked pending until phase 4 settles it; the hash is kept so a retry is not an edit.
+        rawHash: state === 'promoted' || existing?.eventId ? `${PENDING}${hash}` : hash,
         lastSeenAt: now,
         firstSeenAt: now,
         lastChangedAt: now,
@@ -492,21 +501,27 @@ export async function syncSource(source: EventSource, db: AnyDatabase): Promise<
     });
   }
 
+  // Same content and state, but phase-4 work from an earlier run never landed: run only that work.
+  const retry = planned.filter(
+    (row) => row.existing?.rawHash === `${PENDING}${row.hash}` && row.existing.state === row.state,
+  );
   const unchanged = planned.filter((row) => row.existing && row.existing.rawHash === row.hash);
-  const changed = planned.filter((row) => !row.existing || row.existing.rawHash !== row.hash);
+  const changed = planned.filter(
+    (row) => !row.existing || (row.existing.rawHash !== row.hash && !retry.includes(row)),
+  );
 
   // ── PHASE 2: the unchanged majority, in ONE statement ────────────────────
   //
   // The whole point of `rawHash`. On a quiet night this is the only write the
   // sync performs, and it is a single UPDATE rather than 317.
-  if (unchanged.length > 0) {
+  if (unchanged.length + retry.length > 0) {
     await db
       .update(schema.eventSourceRecords)
       .set({ lastSeenAt: now })
       .where(
         inArray(
           schema.eventSourceRecords.id,
-          unchanged.map((row) => row.existing!.id),
+          [...unchanged, ...retry].map((row) => row.existing!.id),
         ),
       );
 
@@ -589,6 +604,11 @@ export async function syncSource(source: EventSource, db: AnyDatabase): Promise<
     if (row.existing) summary.updated += 1;
     else summary.created += 1;
   }
+  // A retry skipped phase 3: the feed entry did not change, so it is not an edit.
+  for (const row of retry) {
+    upserted.set(row.event.externalId, { id: row.existing!.id, eventId: row.existing!.eventId });
+    summary.unchanged += 1;
+  }
 
   /**
    * The configured Luma identities, read ONCE for the whole run.
@@ -603,9 +623,9 @@ export async function syncSource(source: EventSource, db: AnyDatabase): Promise<
   // ── PHASE 4: promotions and withdrawals, only where needed ───────────────
   //
   // A dozen of these, not 317 — every other row was settled by phase 2 or 3.
-  const linkToEvent: { recordId: string; eventId: string }[] = [];
+  const settled: { recordId: string; hash: string; eventId?: string }[] = [];
 
-  for (const row of changed) {
+  for (const row of [...changed, ...retry]) {
     const record = upserted.get(row.event.externalId);
     if (!record) continue;
     const priorEventId = record.eventId ?? row.existing?.eventId ?? null;
@@ -618,7 +638,7 @@ export async function syncSource(source: EventSource, db: AnyDatabase): Promise<
        * real summary, ambassador credit — and the staging row records only
        * that this feed entry corresponds to it. §38.
        */
-      linkToEvent.push({ recordId: record.id, eventId: row.curatedEventId });
+      settled.push({ recordId: record.id, hash: row.hash, eventId: row.curatedEventId });
       summary.matchedCurated += 1;
       summary.promoted += 1;
       continue;
@@ -634,9 +654,10 @@ export async function syncSource(source: EventSource, db: AnyDatabase): Promise<
         takenSlugs,
       });
       if (eventId) {
-        linkToEvent.push({ recordId: record.id, eventId });
+        settled.push({ recordId: record.id, hash: row.hash, eventId });
         summary.promoted += 1;
-
+      } else {
+        log('sync.promote-failed', { source: source.key, externalId: row.event.externalId });
       }
       continue;
     }
@@ -649,17 +670,24 @@ export async function syncSource(source: EventSource, db: AnyDatabase): Promise<
      * being public. The commonest cause is an organiser correcting a venue,
      * which can move an event out of India entirely.
      */
-    if (priorEventId && (await withdrawEvent(db, sourceRow.id, priorEventId, now))) {
-      summary.withdrawn += 1;
+    if (priorEventId) {
+      if (await withdrawEvent(db, sourceRow.id, priorEventId, now)) summary.withdrawn += 1;
+      settled.push({ recordId: record.id, hash: row.hash });
     }
   }
 
-  // The staging → event links, once each.
-  for (const link of linkToEvent) {
-    await db
-      .update(schema.eventSourceRecords)
-      .set({ eventId: link.eventId })
-      .where(eq(schema.eventSourceRecords.id, link.recordId));
+  // A row with phase-4 work gets its real hash (and event link) only once that work is written.
+  // One statement for all of them, not a round trip each.
+  if (settled.length > 0) {
+    const values = sql.join(
+      settled.map((row) => sql`(${row.recordId}::uuid, ${row.hash}, ${row.eventId ?? null}::uuid)`),
+      sql`, `,
+    );
+    await db.execute(sql`
+      update event_source_records as r
+         set raw_hash = v.hash, event_id = coalesce(v.event_id, r.event_id)
+        from (values ${values}) as v(id, hash, event_id)
+       where r.id = v.id`);
   }
 
   /**

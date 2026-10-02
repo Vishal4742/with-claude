@@ -19,7 +19,7 @@ import Masthead from '@/components/Masthead.astro';
 import Breadcrumbs from '@/components/Breadcrumbs.astro';
 import SiteFooter from '@/components/SiteFooter.astro';
 import { site, socials } from '@/data';
-import { breadcrumbSchema, safeJsonLd, websiteSchema } from '@/lib/seo';
+import { breadcrumbSchema, safeInlineJson, websiteSchema } from '@/lib/seo';
 import type { Crumb } from '@/lib/seo';
 
 interface Props {
@@ -131,7 +131,7 @@ const graph = [
     <script
       is:inline
       type="application/ld+json"
-      set:html={safeJsonLd({ '@context': 'https://schema.org', '@graph': graph })}
+      set:html={safeInlineJson({ '@context': 'https://schema.org', '@graph': graph })}
     />
 
     <!-- Marks the document as scripted before first paint, so the reveal

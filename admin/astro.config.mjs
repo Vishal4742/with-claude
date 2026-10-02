@@ -15,6 +15,7 @@
 import 'dotenv/config';
 import { defineConfig } from 'astro/config';
 import vercel from '@astrojs/vercel';
+import { vercelPathGuard } from '../scripts/vercel-path-guard.mjs';
 
 /**
  * admin.withclaude.in
@@ -149,6 +150,7 @@ export default defineConfig({
   build: { inlineStylesheets: 'auto' },
 
   vite: {
+    plugins: [vercelPathGuard()],
     // `db/` lives above this package's root. Vite needs permission to read it
     // in dev; the build bundles it normally.
     server: { fs: { allow: ['..'] } },
