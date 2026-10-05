@@ -31,7 +31,7 @@ import {
 import { registrationLink } from '@/lib/attribution';
 import { CREDIT_ROLE_LABEL } from '@/lib/credits';
 import { formatCoords } from '@/lib/geo';
-import { asset, requireAsset } from '@/lib/images';
+import { asset, requireAsset, shareCard } from '@/lib/images';
 import { titles, trail } from '@/lib/seo';
 import {
   formatName,
@@ -63,9 +63,9 @@ const ambassador = selectors.hostAmbassador(event);
  * archive's record of who talked — and listing the same person under both
  * would imply two separate contributions.
  */
-const otherCredits = selectors.eventCredits(event).filter(
-  (entry) => entry.credit.role !== 'primary_host' && entry.credit.role !== 'speaker',
-);
+const otherCredits = selectors
+  .eventCredits(event)
+  .filter((entry) => entry.credit.role !== 'primary_host' && entry.credit.role !== 'speaker');
 const canRegister = isRegistrationOpen(event);
 /**
  * The registration href, with WITH CLAUDE attribution merged in. §26.
@@ -76,6 +76,19 @@ const canRegister = isRegistrationOpen(event);
  */
 const registerHref = registrationLink(event.registrationUrl);
 const cover = asset(event.coverImage);
+/**
+ * The picture a link unfurler gets, which is NOT the picture above.
+ *
+ * `cover` is a 400×400 square and belongs in the page body. A share card has
+ * to be 1200×630 — `twitter:card` is `summary_large_image` — so it is a
+ * separate, generated image (`npm run og:events`) that this resolves by slug.
+ *
+ * This used to be `image={event.coverImage}`: the raw data-layer key, which
+ * the layout dutifully resolved against the site origin and published as
+ * `https://www.withclaude.in/covers/cover-vol01.jpg`. Nothing was ever served
+ * there, so the eight events WITH a cover shared worse than the nine without.
+ */
+const shareImage = shareCard(event.slug);
 /**
  * Projects built here: the SAME query and visibility predicate as the
  * Project Directory (`publicProjectsForEvent`), joined on this event's UUID —
@@ -108,9 +121,10 @@ const position = selectors.eventsChronological.findIndex((e) => e.slug === event
 const previous = selectors.eventsChronological[position - 1];
 const upNext = selectors.eventsChronological[position + 1];
 
-const metaDescription = lifecycle === 'upcoming' && canRegister && event.registrationUrl
-  ? `Register for ${event.title}: ${event.description ?? event.summary}`
-  : (event.description ?? event.summary);
+const metaDescription =
+  lifecycle === 'upcoming' && canRegister && event.registrationUrl
+    ? `Register for ${event.title}: ${event.description ?? event.summary}`
+    : (event.description ?? event.summary);
 
 const schema = [
   {
@@ -184,7 +198,7 @@ const crumbs = trail(
   active="/events"
   breadcrumbs={crumbs}
   schema={schema}
-  image={event.coverImage}
+  image={shareImage}
   ogImageAlt={`Poster for ${event.title} in ${selectors.cityName(event.citySlug)}`}
 >
   <PageIntro
@@ -193,16 +207,32 @@ const crumbs = trail(
     stamp={city ? formatCoords(city.lat, city.lon) : undefined}
   >
     <p>{event.description ?? event.summary}</p>
-    
+
     <div class="intro-facts">
       <p>
-        <strong>Date:</strong> <time datetime={isoDateTime(event.date, event.startTime)}>{formatDate(event.date)}</time>
-        {event.rescheduledFrom && <span class="rescheduled"> · rescheduled from {formatDateLong(event.rescheduledFrom).replace(/ \d{4}$/, '')}</span>}
+        <strong>Date:</strong>
+        <time datetime={isoDateTime(event.date, event.startTime)}>{formatDate(event.date)}</time>
+        {
+          event.rescheduledFrom && (
+            <span class="rescheduled">
+              {' '}
+              · rescheduled from {formatDateLong(event.rescheduledFrom).replace(/ \d{4}$/, '')}
+            </span>
+          )
+        }
       </p>
-      <p><strong>Location:</strong> <a href={`/cities/${event.citySlug}`}>{selectors.cityName(event.citySlug)}</a></p>
-      {ambassador && (
-        <p><strong>Host:</strong> <a href={`/builders/${ambassador.builderSlug ?? ambassador.slug}`}>{ambassador.name}</a></p>
-      )}
+      <p>
+        <strong>Location:</strong>
+        <a href={`/cities/${event.citySlug}`}>{selectors.cityName(event.citySlug)}</a>
+      </p>
+      {
+        ambassador && (
+          <p>
+            <strong>Host:</strong>{' '}
+            <a href={`/builders/${ambassador.builderSlug ?? ambassador.slug}`}>{ambassador.name}</a>
+          </p>
+        )
+      }
     </div>
   </PageIntro>
 
@@ -210,13 +240,13 @@ const crumbs = trail(
     <h2 id="detail-heading" class="visually-hidden">Details</h2>
     <div class:list={['detail', { 'has-aside': hasAside }]}>
       <div class="detail-main">
-        <div 
-          class="detail-status" 
-          data-event-end={
-            event.endTime 
-              ? isoDateTime(event.date, event.endTime) 
-              : new Date(istInstant(event.date, event.startTime).getTime() + 2 * 3600000).toISOString()
-          }
+        <div
+          class="detail-status"
+          data-event-end={event.endTime
+            ? isoDateTime(event.date, event.endTime)
+            : new Date(
+                istInstant(event.date, event.startTime).getTime() + 2 * 3600000,
+              ).toISOString()}
         >
           <span class:list={['pip', `pip-${lifecycleTone(lifecycle)}`]}>
             {lifecycleLabel(lifecycle)}
@@ -254,8 +284,8 @@ const crumbs = trail(
                   builder profile from there (§24), so nothing is lost and the
                   graph runs the way §29 and §30 describe.
                 */}
-                Hosted by{' '}
-                <a href={`/ambassadors/${ambassador.slug}`}>{ambassador.name}</a>, {ambassador.title}.
+                Hosted by <a href={`/ambassadors/${ambassador.slug}`}>{ambassador.name}</a>,{' '}
+                {ambassador.title}.
               </p>
 
               {/*
@@ -376,7 +406,6 @@ const crumbs = trail(
             </div>
           )
         }
-
 
         {
           recaps.length > 0 && (
@@ -521,7 +550,9 @@ const crumbs = trail(
               Projects built here <span class="event-projects-count">{built.total}</span>
             </h2>
             <a class="dir-clear" href={directoryHref({ events: [event.slug] })}>
-              {built.total > outputs.length ? `See all ${built.total} in the Project Directory →` : 'Open in the Project Directory →'}
+              {built.total > outputs.length
+                ? `See all ${built.total} in the Project Directory →`
+                : 'Open in the Project Directory →'}
             </a>
           </div>
           <ul class="dir-list">
@@ -579,7 +610,7 @@ const crumbs = trail(
     // Progressive enhancement to handle stale CDN cache between event end and nightly cron
     const statusEl = document.querySelector('.detail-status[data-event-end]');
     const actionsEl = document.querySelector('.detail-actions');
-    
+
     if (statusEl) {
       const endStr = statusEl.getAttribute('data-event-end');
       if (endStr && Date.now() >= new Date(endStr).getTime()) {
@@ -587,7 +618,7 @@ const crumbs = trail(
         if (pip && !pip.classList.contains('pip-archive')) {
           pip.className = 'pip pip-archive';
           pip.textContent = 'Past';
-          
+
           if (actionsEl) {
             const btn = actionsEl.querySelector('.btn');
             if (btn && btn.tagName === 'A') {

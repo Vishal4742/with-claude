@@ -27,6 +27,7 @@
     "db:create-user": "tsx db/create-user.ts",
     "db:studio": "drizzle-kit studio",
     "import": "tsx scripts/import/cli.ts",
+    "og:events": "tsx scripts/og-events.ts",
     "baserow:check-schema": "tsx scripts/baserow/check-schema.ts",
     "baserow:discover": "tsx scripts/baserow/discover-config.ts"
   },
