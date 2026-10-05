@@ -77,6 +77,29 @@ const canRegister = isRegistrationOpen(event);
 const registerHref = registrationLink(event.registrationUrl);
 const cover = asset(event.coverImage);
 /**
+ * The URL to publish as this page's `og:image`.
+ *
+ * `event.coverImage` is a data-layer KEY, not a URL: `covers/cover-vol01.jpg`,
+ * resolved against `src/assets/` by `asset()`. Passing the key itself to
+ * `Base` — which this page did — had the layout turn it into
+ * `https://www.withclaude.in/covers/cover-vol01.jpg` via `new URL(image,
+ * site.url)`. The site has never served that path, so the eight events WITH a
+ * cover advertised a 404 to every link unfurler while the nine without one
+ * fell back to `/og-card.jpg` and worked.
+ *
+ * `cover.src` is the URL the image pipeline actually emits, so this declares
+ * the same picture the page draws rather than a second, invented path. The
+ * alternative was to `git mv` the covers into `public/` and declare a
+ * root-relative path; the asset route is taken because it keeps content
+ * hashing (a corrected picture is a NEW url, which is the only thing that
+ * dislodges a card an unfurler has already cached) and because `/_astro/*` is
+ * already served `immutable` by `vercel.json`, so it needs no deploy change.
+ *
+ * `undefined` for an event with no cover, which lets `Base`'s own
+ * `/og-card.jpg` default apply — a generic card, never a broken one.
+ */
+const shareImage = cover?.src;
+/**
  * Projects built here: the SAME query and visibility predicate as the
  * Project Directory (`publicProjectsForEvent`), joined on this event's UUID —
  * so the event page, its directory filter and every project's "Built at"
@@ -184,7 +207,7 @@ const crumbs = trail(
   active="/events"
   breadcrumbs={crumbs}
   schema={schema}
-  image={event.coverImage}
+  image={shareImage}
   ogImageAlt={`Poster for ${event.title} in ${selectors.cityName(event.citySlug)}`}
 >
   <PageIntro
