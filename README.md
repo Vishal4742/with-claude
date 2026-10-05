@@ -112,6 +112,12 @@ alone does not fail it. The screenshots are attached to the run as the `preview-
 artifact. It runs on Vercel's `repository_dispatch` event, which GitHub reads from `main` only, so
 it starts working once it is merged and no pull request can change what it runs.
 
+The same job then audits the share cards (`scripts/dev/share-cards-audit.mjs`): every event page
+on the deployment, the `og:image` it declares, and the bytes at that URL. This has to run against a
+deployment rather than in `ci.yml`, because `/events/<slug>/` is a serverless function that reads
+its event from the database — there is no event page to fetch until something is deployed. See
+**Share cards**.
+
 What a maintainer has to set up for it:
 
 1. **Vercel, `with-claude`:** under Settings → Git, check that `repository_dispatch` events are on.
@@ -783,7 +789,48 @@ this project's whole security boundary, and a form that grants it is a form reac
 session or a bug in a role check.
 
 Set `site` in `astro.config.mjs` if the domain changes — canonical URLs, Open Graph tags and the
-sitemap all read from it. Regenerate the share card after a brand change: `node scripts/og.mjs`.
+sitemap all read from it. Regenerate the share cards after a brand change: `node scripts/og.mjs`
+for the site card and `npm run og:events` for the per-event ones (see **Share cards** below).
+
+## Share cards
+
+Every event page publishes its own 1200×630 `og:image`, generated into `src/assets/og/events/` and
+committed. The site-wide `public/og-card.jpg` is the fallback for anything without one.
+
+```bash
+npm run og:events                 # re-render all of them
+npm run og:events -- impact-lab   # only slugs containing "impact-lab"
+npm run build && npx vitest run tests/share-cards.test.ts
+node scripts/dev/share-cards-audit.mjs                       # production
+node scripts/dev/share-cards-audit.mjs http://localhost:4321 # anything running
+```
+
+Run `npm run og:events` after adding an event, changing a title or date, or replacing a cover —
+`tests/share-cards.test.ts` fails when an event in the record has no card.
+
+Three things about this are deliberate, and all three are scar tissue from eight of seventeen event
+pages advertising an `og:image` that returned 404 for as long as the pages existed:
+
+- **The cards are assets, not files in `public/`.** `src/lib/images.ts` resolves them, so a card
+  gets a content-hashed `/_astro/…` URL and the `immutable` headers `vercel.json` already grants
+  that path. A share card's URL is scraped once by WhatsApp, X, LinkedIn and Slack and cached by
+  them for a long time; hashing is what makes a corrected card a new URL they will re-fetch. The
+  full argument is in `src/lib/share-card.ts`.
+- **A page never names a share image itself.** `shareCard(slug)` is the only way to get one. The
+  defect was `image={event.coverImage}` — a data-layer key, not a URL, which the layout resolved
+  against the site origin into a path nothing serves.
+- **The checks measure responses, not strings.** The test fetches each card back over HTTP from the
+  built output and re-measures its pixels; `scripts/dev/share-cards-audit.mjs` does the real
+  end-to-end against a deployment — fetch every event page, read the `og:image` it declares, fetch
+  that — and runs in the preview smoke workflow, where it also gates production promotion. It has
+  to run against a deployment because `/events/<slug>/` is a serverless function that reads its
+  event from the database. A test that only asserted the meta tag's text was green throughout.
+
+An event's picture comes from its cover, and only when that cover is that event's own: three covers
+were byte-identical, one placeholder standing in for three different rooms, and those events get a
+typographic card instead. `event.photos` holds the real photographs but nothing in the record says
+which of them is the good one. When the Photo Gallery work adds that flag, `pictureFor()` in
+`scripts/og-events.ts` is the single place to read it — not a second best-photo rule.
 
 ## Dev tooling
 

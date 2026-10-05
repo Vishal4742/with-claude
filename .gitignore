@@ -4,7 +4,7 @@ dist/
 .env
 .DS_Store
 shots*/
-scripts/.og.html
+scripts/.og*.html
 .vercel
 
 .vercel

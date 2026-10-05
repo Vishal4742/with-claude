@@ -100,6 +100,23 @@ jobs:
           STRICT: '1'
         run: node scripts/dev/visual-review.mjs
 
+      # Every event page, the og:image it declares, and the bytes at that URL.
+      #
+      # This has to run against a DEPLOYMENT and not against a local build:
+      # `/events/<slug>/` is a serverless function that reads the event out of
+      # the database, so there is no event page to fetch until something is
+      # deployed. It is the only check that sees what a link unfurler sees, and
+      # it is here rather than in `ci.yml` for that reason. A production build
+      # held by Deployment Checks fails it the same way a preview does, so a
+      # 404 share card cannot be promoted.
+      - name: Audit the share cards
+        env:
+          BASE: ${{ github.event.client_payload.url }}
+          EXTRA_HEADERS: |-
+            x-vercel-protection-bypass: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+            x-vercel-set-bypass-cookie: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET != '' && 'true' || '' }}
+        run: node scripts/dev/share-cards-audit.mjs
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -1,4 +1,5 @@
 import type { ImageMetadata } from 'astro';
+import { DEFAULT_SHARE_IMAGE, shareCardKey } from './share-card';
 
 /**
  * Image registry.
@@ -35,4 +36,21 @@ export function requireAsset(key: string): ImageMetadata {
     );
   }
   return found;
+}
+
+/**
+ * The URL to publish as an event's `og:image`.
+ *
+ * Returns the hashed, pipeline-emitted URL of that event's generated card, or
+ * the site-wide card when the event has none — a generic card, never a 404.
+ * See `src/lib/share-card.ts` for why the cards are assets rather than files
+ * in `public/`, and `scripts/og-events.ts` for what writes them.
+ *
+ * This is deliberately the ONLY way a page should name a share image. The
+ * defect it replaces was a page passing a raw data-layer key straight to the
+ * layout, where `new URL(image, site.url)` turned a string that was never a
+ * URL into one that resolved to nothing.
+ */
+export function shareCard(slug: string): string {
+  return asset(shareCardKey(slug))?.src ?? DEFAULT_SHARE_IMAGE;
 }
