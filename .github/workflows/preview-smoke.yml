@@ -100,6 +100,24 @@ jobs:
           STRICT: '1'
         run: node scripts/dev/visual-review.mjs
 
+      # Every event page's `og:image`, read off the rendered page and then
+      # FETCHED. This cannot run in `ci.yml`: the event pages are
+      # `prerender = false`, so a local build has no event HTML to read a meta
+      # tag out of — there has to be something deployed. Eight of seventeen
+      # share cards 404'd for the life of the pages because the only thing
+      # checking them was nothing; this is the check that holds the line.
+      #
+      # `if: always()` so a visual-review failure does not hide this result.
+      - name: Audit the event share cards
+        if: always()
+        env:
+          BASE: ${{ github.event.client_payload.url }}
+          EXTRA_HEADERS: |-
+            x-vercel-protection-bypass: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+            x-vercel-set-bypass-cookie: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET != '' && 'true' || '' }}
+          STRICT: '1'
+        run: node scripts/dev/share-cards-audit.mjs
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
